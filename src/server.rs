@@ -1,3 +1,11 @@
+/*
+1) A system that initialize the end point for the server. FOr now it listen on all address and uses a Self-signed certificate on localhost.
+2) A system should handle all client messages. In this example we have Join, Disconnect and Chat.
+*/
+
+
+
+
 use std::net::{IpAddr, Ipv4Addr};
 use bevy::prelude::*;
 use bevy_quinnet::server::certificate::CertificateRetrievalMode;
@@ -12,12 +20,14 @@ use crate::protocol::{ClientMessage, ServerMessage};
 
 mod protocol;
 
-// User server side
+/// A map that contains all users data
 #[derive(Resource, Debug, Clone, Default)]
 pub struct Users {
     pub names: HashMap<ClientId, String>,
 }
 
+
+/// Used to start listening from localhost
 fn start_listening(mut server: ResMut<Server>) {
     server.start_endpoint(
         ServerConfiguration::from_ip(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 6000),
@@ -25,40 +35,36 @@ fn start_listening(mut server: ResMut<Server>) {
     ).unwrap();
 }
 
+/// handles the client messages (Join, Disconnected, ChatMessage)
 fn handle_client_messages(mut server: ResMut<Server>, mut users: ResMut<Users>) {
     let endpoint = server.endpoint_mut();
     for client_id in endpoint.clients() {
         while let Some(message) = endpoint.try_receive_message_from::<ClientMessage>(client_id) {
             match message {
+                // when the servers receive a Join messages...
+                // ... if the client is already joined, shows a warning ...
                 ClientMessage::Join { name } => {
                     if users.names.contains_key(&client_id) {
-                        warn!(
-                            "Received a Join from an already connected client: {}",
-                            client_id
-                        )
+                        warn!("Received a Join from an already connected client: {client_id}")
                     } else {
+                        // ... otherwise initialize the client data
                         info!("{} connected", name);
                         users.names.insert(client_id, name.clone());
-                        // Initialize this client with existing state
-                        endpoint
-                            .send_message(
+                        // Sends to the client the existing state...
+                        endpoint.send_message(
+                            client_id,
+                            ServerMessage::InitClient {
                                 client_id,
-                                ServerMessage::InitClient {
-                                    client_id,
-                                    usernames: users.names.clone(),
-                                },
-                            )
-                            .unwrap();
-                        // Broadcast the connection event
-                        endpoint
-                            .send_group_message(
-                                users.names.keys().into_iter(),
-                                ServerMessage::ClientConnected {
-                                    client_id,
-                                    username: name,
-                                },
-                            )
-                            .unwrap();
+                                usernames: users.names.clone(),
+                            }).unwrap();
+                        // And broadcast the connection event to every connected client (including the last one)
+                        endpoint.send_group_message(
+                            users.names.keys().into_iter(),
+                            ServerMessage::ClientConnected {
+                                client_id,
+                                username: name,
+                            },
+                        ).unwrap();
                     }
                 }
                 ClientMessage::Disconnect {} => {
@@ -100,21 +106,15 @@ fn handle_disconnect(endpoint: &mut Endpoint, users: &mut ResMut<Users>, client_
     // Remove this user
     if let Some(username) = users.names.remove(&client_id) {
         // Broadcast its disconnection
-
-        endpoint
-            .send_group_message(
-                users.names.keys().into_iter(),
-                ServerMessage::ClientDisconnected {
-                    client_id,
-                },
-            )
-            .unwrap();
-        info!("{} disconnected", username);
+        endpoint.send_group_message(
+            users.names.keys().into_iter(),
+            ServerMessage::ClientDisconnected {
+                client_id,
+            },
+        ).unwrap();
+        info!("{username} disconnected");
     } else {
-        warn!(
-            "Received a Disconnect from an unknown or disconnected client: {}",
-            client_id
-        )
+        warn!("Received a Disconnect from an unknown or disconnected client: {client_id}")
     }
 }
 

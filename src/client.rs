@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
 use bevy::app::{AppExit, ScheduleRunnerPlugin};
@@ -15,17 +15,17 @@ use rand::Rng;
 
 mod protocol;
 
+/// Single User data. Also contains the name of the other users
 #[derive(Resource, Debug, Clone, Default)]
 struct Users {
     self_id: ClientId,
     names: HashMap<ClientId, String>,
 }
+
+/// TerminalReceiver needs to be Sync to be safely a resource. To make this possible,
+/// it must be wrapped in a Mutex (so we can avoid to unsafely implement Sync!)
 #[derive(Resource, Deref, DerefMut)]
-struct TerminalReceiver(mpsc::Receiver<String>);
-
-unsafe impl Sync for TerminalReceiver {
-
-}
+struct TerminalReceiver(Mutex<mpsc::Receiver<String>>);
 
 pub fn on_app_exit(app_exit_events: EventReader<AppExit>, client: Res<Client>) {
     if !app_exit_events.is_empty() {
@@ -44,10 +44,7 @@ fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>) 
         .try_receive_message::<ServerMessage>()
     {
         match message {
-            ServerMessage::ClientConnected {
-                client_id,
-                username,
-            } => {
+            ServerMessage::ClientConnected { client_id, username} => {
                 info!("{} joined", username);
                 users.names.insert(client_id, username);
             }
@@ -78,12 +75,13 @@ fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>) 
     }
 }
 
+/// specific to the chat message example
 fn handle_terminal_messages(
     terminal_messages: ResMut<TerminalReceiver>,
     mut app_exit_events: EventWriter<AppExit>,
     client: Res<Client>,
 ) {
-    while let Ok(message) = terminal_messages.try_recv() {
+    while let Ok(message) = terminal_messages.try_lock().unwrap().try_recv() {
         if message == "quit" {
             app_exit_events.send(AppExit);
         } else {
@@ -96,7 +94,7 @@ fn handle_terminal_messages(
 
 fn start_terminal_listener(mut commands: Commands) {
     let (from_terminal_sender, from_terminal_receiver) = mpsc::channel::<String>();
-
+    // this thread is needed to listen for messages in the terminal. It is specific to this chat example
     thread::spawn(move || loop {
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
@@ -105,7 +103,7 @@ fn start_terminal_listener(mut commands: Commands) {
             .unwrap();
     });
 
-    commands.insert_resource(TerminalReceiver(from_terminal_receiver));
+    commands.insert_resource(TerminalReceiver(from_terminal_receiver.into()));
 }
 
 fn start_connection(mut client: ResMut<Client>) {
@@ -134,8 +132,7 @@ fn handle_client_events(
         println!("--- Joining with name: {}", username);
         println!("--- Type 'quit' to disconnect");
 
-        client
-            .connection()
+        client.connection()
             .send_message(ClientMessage::Join { name: username })
             .unwrap();
 
@@ -146,21 +143,10 @@ fn handle_client_events(
 fn main() {
     println!("client");
     App::new()
-        .add_plugins((
-            ScheduleRunnerPlugin::default(),
-            LogPlugin::default(),
-            QuinnetClientPlugin::default(),
-        ))
+        .add_plugins((ScheduleRunnerPlugin::default(), LogPlugin::default(), QuinnetClientPlugin::default()))
         .insert_resource(Users::default())
         .add_systems(Startup, (start_terminal_listener, start_connection))
-        .add_systems(
-            Update,
-            (
-                handle_terminal_messages,
-                handle_server_messages,
-                handle_client_events,
-            ),
-        )
+        .add_systems(Update, (handle_terminal_messages, handle_server_messages, handle_client_events))
         // CoreSet::PostUpdate so that AppExit events generated in the previous stage are available
         .add_systems(PostUpdate, on_app_exit)
         .run();

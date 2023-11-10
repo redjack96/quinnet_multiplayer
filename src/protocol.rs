@@ -2,10 +2,6 @@ use bevy_quinnet::shared::ClientId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-
-
-
-
 // Messages from clients
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -32,4 +28,5 @@ pub enum ServerMessage {
         client_id: ClientId,
         usernames: HashMap<ClientId, String>,
     },
+    // TODO: add ServerDisconnected
 }
