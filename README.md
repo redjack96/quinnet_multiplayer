@@ -7,7 +7,7 @@ Capabilities:
 - When a client connects, the server informs all other client that a new user has joined.
 - When a client disconnects, the server waits until a timeout, then informs all other clients of the disconnection.
 - TODO: When a client reconnects before a timeout, it resumes the previous session.
-- TODO: When the server disconnects, all client disconnects too.
+- When the server disconnects, all client disconnects too after a timeout with a lost connection error.
 
 Useful as a baseline to make client-server multiplayer games.
 

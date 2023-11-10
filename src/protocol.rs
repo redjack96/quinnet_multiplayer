@@ -27,6 +27,5 @@ pub enum ServerMessage {
     InitClient {
         client_id: ClientId,
         usernames: HashMap<ClientId, String>,
-    },
-    // TODO: add ServerDisconnected
+    }
 }

@@ -29,22 +29,26 @@ struct TerminalReceiver(Mutex<mpsc::Receiver<String>>);
 
 pub fn on_app_exit(app_exit_events: EventReader<AppExit>, client: Res<Client>) {
     if !app_exit_events.is_empty() {
-        client
-            .connection()
-            .send_message(ClientMessage::Disconnect {})
-            .unwrap();
-        // TODO Clean: event to let the async client send his last messages.
-        thread::sleep(Duration::from_secs_f32(0.1));
+        if let Ok(_) = client.connection().send_message(ClientMessage::Disconnect {}) {
+            // TODO Clean: event to let the async client send his last messages.
+            thread::sleep(Duration::from_secs_f32(0.1));
+        }
     }
 }
 
-fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>) {
-    while let Some(message) = client
+fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>, mut exit_event: EventWriter<AppExit>) {
+    while let Some(message) = match client
         .connection_mut()
-        .try_receive_message::<ServerMessage>()
-    {
+        .receive_message::<ServerMessage>() {
+        Ok(message) => message,
+        Err(err) => {
+            error!("error while receiving message: {err}");
+            exit_event.send(AppExit);
+            None
+        }
+    } {
         match message {
-            ServerMessage::ClientConnected { client_id, username} => {
+            ServerMessage::ClientConnected { client_id, username } => {
                 info!("{} joined", username);
                 users.names.insert(client_id, username);
             }
@@ -98,21 +102,27 @@ fn start_terminal_listener(mut commands: Commands) {
     thread::spawn(move || loop {
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
-        from_terminal_sender
-            .send(buffer.trim_end().to_string())
-            .unwrap();
+        match from_terminal_sender
+            .send(buffer.trim_end().to_string()) {
+            Ok(_) => {}
+            Err(err) => error!("terminal thread error : {err}"),
+        };
     });
 
     commands.insert_resource(TerminalReceiver(from_terminal_receiver.into()));
 }
 
-fn start_connection(mut client: ResMut<Client>) {
-    client
-        .open_connection(
-            ConnectionConfiguration::from_strings("127.0.0.1:6000", "0.0.0.0:0").unwrap(),
-            CertificateVerificationMode::SkipVerification,
-        )
-        .unwrap();
+fn start_connection(mut client: ResMut<Client>, mut exit_event: EventWriter<AppExit>) {
+    match client.open_connection(
+        ConnectionConfiguration::from_strings("127.0.0.1:6000", "0.0.0.0:0").unwrap(),
+        CertificateVerificationMode::SkipVerification,
+    ) {
+        Ok(_) => {}
+        Err(err) => {
+            error!("{err}");
+            exit_event.send(AppExit)
+        }
+    };
 
     // You can already send message(s) even before being connected, they will be buffered. In this example we will wait for a ConnectionEvent.
 }
@@ -132,9 +142,11 @@ fn handle_client_events(
         println!("--- Joining with name: {}", username);
         println!("--- Type 'quit' to disconnect");
 
-        client.connection()
-            .send_message(ClientMessage::Join { name: username })
-            .unwrap();
+        match client.connection()
+            .send_message(ClientMessage::Join { name: username }) {
+            Ok(_) => {}
+            Err(err) => error!("error while sending join event {err}"),
+        };
 
         connection_events.clear();
     }
