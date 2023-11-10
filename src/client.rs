@@ -37,6 +37,7 @@ pub fn on_app_exit(app_exit_events: EventReader<AppExit>, client: Res<Client>) {
 }
 
 fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>, mut exit_event: EventWriter<AppExit>) {
+    /*
     while let Some(message) = match client
         .connection_mut()
         .receive_message::<ServerMessage>() {
@@ -46,7 +47,20 @@ fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>, 
             exit_event.send(AppExit);
             None
         }
-    } {
+    }
+    */
+
+    while let Some(message) = client
+        .connection_mut()
+        .receive_message::<ServerMessage>()
+        .or_else(|err| {
+            error!("error while receiving message: {err}");
+            exit_event.send(AppExit);
+            let res: Result<Option<ServerMessage>, ()> = Ok(None);
+            return res;
+        })
+        .ok()
+        .and_then(|o| o) {
         match message {
             ServerMessage::ClientConnected { client_id, username } => {
                 info!("{} joined", username);

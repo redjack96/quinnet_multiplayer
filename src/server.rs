@@ -46,10 +46,10 @@ fn start_listening(mut server: ResMut<Server>, mut exit_event: EventWriter<AppEx
 fn handle_client_messages(mut server: ResMut<Server>, mut users: ResMut<Users>) {
     let endpoint = server.endpoint_mut();
     for client_id in endpoint.clients() {
-        while let Some(message) = match endpoint.receive_message_from::<ClientMessage>(client_id) {
-            Ok(message) => message,
-            Err(_) => None,
-        } {
+        while let Some(message) = endpoint.receive_message_from::<ClientMessage>(client_id)
+            .transpose() // inverts result with option, so that we can call ok()
+            .and_then(|r| return r.ok()) // flatten an option<option<t>> into option<t>
+        {
             match message {
                 // when the servers receive a Join messages...
                 // ... if the client is already joined, shows a warning ...
