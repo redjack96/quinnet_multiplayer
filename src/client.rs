@@ -53,11 +53,10 @@ fn handle_server_messages(mut users: ResMut<Users>, mut client: ResMut<Client>, 
     while let Some(message) = client
         .connection_mut()
         .receive_message::<ServerMessage>()
-        .or_else(|err| {
+        .or_else(|err| -> Result<Option<ServerMessage>, ()> {
             error!("error while receiving message: {err}");
             exit_event.send(AppExit);
-            let res: Result<Option<ServerMessage>, ()> = Ok(None);
-            return res;
+            Ok(None)
         })
         .ok()
         .and_then(|o| o) {
