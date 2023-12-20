@@ -77,9 +77,12 @@ fn handle_client_messages(mut server: ResMut<Server>, mut users: ResMut<Users>) 
                     }
                 }
                 ClientMessage::Disconnect {} => {
-                    // We tell the server to disconnect this user
-                    let Ok(_) = endpoint.disconnect_client(client_id) else { return; };
                     handle_disconnect(endpoint, &mut users, client_id);
+                    // We tell the server to disconnect this user
+                    match endpoint.disconnect_client(client_id) {
+                        Ok(()) => info!("Host: Client {client_id} disconnected correctly"),
+                        Err(err) => {error!("error while disconnecting client: {err}")},
+                    }
                 }
                 ClientMessage::ChatMessage { message } => {
                     if let Some(user) = users.names.get(&client_id) {
