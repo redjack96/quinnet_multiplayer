@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = {workspace = true}
+bevy = "0.12.0"
 bevy_quinnet = "0.6.0"
-serde = { workspace = true }
+serde = "1.0.190"
 rand = "0.8.5"
 
 
